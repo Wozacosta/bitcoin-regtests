@@ -342,49 +342,71 @@ const createDustTransaction = async (recipientAddress) => {
   }
 };
 
-const createMultisigTransaction = async (recipientAddress) => {
-  if (!recipientAddress) {
-    console.error("Invalid parameter: Provide a valid recipient address.");
+const createMultisigTransaction = async (recipientPubKey) => {
+  if (!recipientPubKey) {
+    console.error("Invalid parameter: Provide a valid recipient pubkey.");
     return;
   }
 
-  console.log(`Creating a multisig transaction to ${recipientAddress}...`);
+  console.log(`Creating a multisig transaction to ${recipientPubKey}...`);
 
   try {
     // Step 1: Generate additional addresses for the multisig wallet
-    const key1 = await client.getNewAddress({ address_type: "legacy" });
-    const key2 = await client.getNewAddress({ address_type: "legacy" });
+    const key1 = await client.getNewAddress();
+    const key2 = await client.getNewAddress();
 
     console.log(`Generated additional multisig keys: ${key1}, ${key2}`);
 
-    // Step 2: Create a 2-of-3 multisig address
-    // https://developer.bitcoin.org/reference/rpc/addmultisigaddress.html#argument-4-address-type
-    const multisig = await client.addMultiSigAddress({
-      nrequired: 2, // Requires 2 out of 3 signatures
-      keys: [recipientAddress, key1, key2], // One provided address, two generated
-    });
+    // Step 2: Get public keys for these addresses
+    const pubKey1 = await client
+      .getAddressInfo({ address: key1 })
+      .then((info) => info.pubkey);
+    const pubKey2 = await client
+      .getAddressInfo({ address: key2 })
+      .then((info) => info.pubkey);
+    const pubKeyRecipient = recipientPubKey;
+    // await client
+    //   .getAddressInfo({ address: recipientAddress })
+    //   .then((info) => info.pubkey);
+
+    console.log(
+      `Generated public keys: ${pubKeyRecipient}, ${pubKey1}, ${pubKey2}`,
+    );
+
+    console.log({ keys: [pubKeyRecipient, pubKey1, pubKey2] });
+    // Step 3: Create a 2-of-3 multisig address using public keys
+    const multisig = await client.command(
+      "createMultisig",
+      2,
+      [pubKeyRecipient, pubKey1, pubKey2],
+      //'["03789ed0bb717d88f7d321a368d905e7430207ebbd82bd342cf11ae157a7ace5fd","03dbc6764b8884a92e871274b87583e6d5c2a58819473e17e107ef3f6aa5a61626"]',
+    );
+    // createMultisig({
+    //   nrequired: 2, // Requires 2 out of 3 signatures
+    //   keys: [pubKeyRecipient, pubKey1, pubKey2], // One provided key, two generated
+    // });
 
     console.log("Created multisig address:", multisig.address);
 
-    // Step 3: Create a raw transaction sending BTC to the multisig address
+    // Step 4: Create a raw transaction sending BTC to the multisig address
     const rawTx = await client.createRawTransaction({
       inputs: [],
       outputs: { [multisig.address]: 0.5 }, // Sending 0.5 BTC
     });
 
-    // Step 4: Fund the transaction (Bitcoin Core selects UTXOs)
+    // Step 5: Fund the transaction (Bitcoin Core selects UTXOs)
     const fundedTx = await client.fundRawTransaction({ hexstring: rawTx });
 
     console.log("Funded Transaction:", fundedTx);
 
-    // Step 5: Sign the transaction
+    // Step 6: Sign the transaction
     const signedTx = await client.signRawTransactionWithWallet({
       hexstring: fundedTx.hex,
     });
 
     console.log("Signed Transaction Hex:", signedTx.hex);
 
-    // Step 6: Attempt to broadcast the transaction
+    // Step 7: Attempt to broadcast the transaction
     try {
       const txId = await client.sendRawTransaction({ hexstring: signedTx.hex });
       console.log("Multisig transaction sent! TXID:", txId);
@@ -393,10 +415,9 @@ const createMultisigTransaction = async (recipientAddress) => {
     }
   } catch (error) {
     console.error("Error in createMultisigTransaction:", error.message);
-    console.error({ error });
+    console.log({ error });
   }
 };
-
 // Function mapping for CLI
 const actions = {
   // sendRaw: sendAutomatedRaw,
