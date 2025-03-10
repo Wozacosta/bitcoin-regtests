@@ -36,41 +36,54 @@ const mineBlock = async (address) => {
   console.log({ newBlock });
 };
 
-const sendToAddress = async (newAddress: string) => {
-  const txSendToAddress = await client.sendToAddress({
-    address: ADDRESS_LL,
-    amount: 1,
-  });
+const mineTo = async (recipientAddress) => {
+  // Mine a block to confirm the transaction
+  await mineBlock(recipientAddress);
+};
 
-  let tx = await client.getTransaction({
-    txid: txSendToAddress,
-    verbose: true,
-  });
+const sendToAddress = async (recipientAddress, amount) => {
+  if (!recipientAddress || amount <= 0) {
+    console.error(
+      "Invalid parameters: Provide a valid recipient address and positive amount.",
+    );
+    return;
+  }
 
-  // let rawTx = await client.getRawTransaction({
-  //   txid: txSendToAddress,
-  // });
+  console.log(`Sending ${amount} BTC to ${recipientAddress}...`);
 
-  console.log({ txSendToAddress, tx, vin: tx.decoded.vin });
+  try {
+    // Step 1: Send the specified amount to the recipient address
+    const txSendToAddress = await client.sendToAddress({
+      address: recipientAddress,
+      amount: amount,
+    });
 
-  await mineBlock(newAddress);
+    console.log(`Transaction initiated! TXID: ${txSendToAddress}`);
 
-  tx = await client.getTransaction({
-    txid: txSendToAddress,
-    verbose: true,
-  });
-  // rawTx = await client.getRawTransaction({
-  //   txid: txSendToAddress,
-  // });
+    // Step 2: Fetch transaction details
+    let tx = await client.getTransaction({
+      txid: txSendToAddress,
+      verbose: true,
+    });
 
-  // const txNow = await jq.run(".", tx, { input: "json" });
-  console.log({ tx, vin: tx.decoded.vin });
+    console.log(
+      "Transaction Details (before mining):",
+      JSON.stringify(tx, null, 2),
+    );
 
-  // const balance = await client.command("-named", "getbalance", {
-  //   account: "*",
-  //   minconf: 0,
-  // });
-  // console.log({ balance });
+    // Step 4: Fetch updated transaction details after confirmation
+    tx = await client.getTransaction({
+      txid: txSendToAddress,
+      verbose: true,
+    });
+
+    console.log(
+      "Transaction Details (after mining):",
+      JSON.stringify(tx, null, 2),
+    );
+  } catch (error) {
+    console.error("Error in sendToAddress:", error.message);
+  }
 };
 
 const sendAutomatedRaw = async (destinationAddress, amount) => {
@@ -260,11 +273,27 @@ const main = async () => {
       parseFloat(param2),
       param3 ? parseInt(param3) : undefined,
     );
+  } else if (command === "mineTo") {
+    if (!param1) {
+      console.error("Usage: node script.js mineTo <recipientAddress>");
+      return;
+    }
+    await mineTo(param1);
+  } else if (command === "sendTo") {
+    if (!param1 || isNaN(parseFloat(param2))) {
+      console.error("Usage: node script.js sendTo <recipientAddress> <amount>");
+      return;
+    }
+    await sendToAddress(param1, parseFloat(param2));
   } else if (command in actions) {
     await actions[command]();
   } else {
     console.log("Usage: node script.js <command>");
     console.log("Available commands:");
+    console.log("  mineTo <address>        - Mine a block to the address");
+    console.log(
+      "  sendTo <address> <amount>     - Send a transaction to an address",
+    );
     console.log("  sendRaw <address> <amount>   - Send a raw transaction");
     console.log(
       "  sendRawSequence <address> <amount> [sequence] - Send a raw transaction with a custom sequence",
