@@ -126,88 +126,104 @@ const sendAutomatedRaw = async (destinationAddress, amount) => {
   }
 };
 
-const sendAutomatedRawSequence = async function () {
-  console.log("in main");
-  /*
-  const count = await agent.getBlockCount();
-  const hash = await agent.getBlockHash(count);
-  const walletInfo = await agent.getWalletInfo();
-  console.log({ count, hash, walletInfo });
-  const newAddress = agent.getNewAddress("-addresstype", "legacy");
-  console.log({ newAddress });
-  */
-  const balance = await client.getBalance({
-    minconf: 0,
-  });
-  console.log({ balance, ADDRESS_LL });
-
-  const newAddress = await client.getNewAddress({
-    address_type: "legacy",
-  });
-  const changeAddress = await client.getRawChangeAddress({
-    address_type: "legacy",
-  });
-  console.log({ newAddress, changeAddress });
-
-  const unspent = await client.listUnspent({
-    query_options: { maximumCount: 1 },
-  });
-  if (unspent.amount < 1) {
-    console.warn("pick another utxo");
+const sendAutomatedRawSequence = async (
+  recipientAddress,
+  amount,
+  sequence = 4294967294,
+) => {
+  if (!recipientAddress || amount <= 0) {
+    console.error(
+      "Invalid parameters: Provide a valid address and positive amount.",
+    );
     return;
   }
-  console.log({ unspent });
-  // createrawtransaction inputs='''[ { "txid": "'$utxo_txid'", "vout": '$utxo_vout', "sequence": 1 } ]''' outputs='''{ "'$recipient'": 0.00007658, "'$changeaddress'": 0.00000001 }''')
-  //await mineBlock(newAddress);
-  const recipientAmount = 1;
-  const changeAmountStr = Number(
-    unspent[0].amount - recipientAmount - FEES,
-  ).toFixed(6);
-  const changeAmount = Number(changeAmountStr);
-  console.log({ changeAmount });
-  if (changeAmount < 0) {
-    console.warn("insufficient funds");
-    return;
-  }
-  console.log({
-    changeAmount,
-    recipientAmount,
-    rest: unspent[0].amount - changeAmount - recipientAmount,
-  });
-  const rawTxHex = await client.createRawTransaction({
-    inputs: [
-      {
-        txid: unspent[0].txid,
-        vout: unspent[0].vout,
-        sequence: 4294967294,
+
+  console.log(
+    `Creating raw transaction: Sending ${amount} BTC to ${recipientAddress} with sequence=${sequence}...`,
+  );
+
+  try {
+    // Step 1: Check balance
+    const balance = await client.getBalance({ minconf: 0 });
+    console.log({ balance, ADDRESS_LL });
+
+    // Step 2: Get new addresses
+    const newAddress = await client.getNewAddress({ address_type: "legacy" });
+    const changeAddress = await client.getRawChangeAddress({
+      address_type: "legacy",
+    });
+    console.log({ newAddress, changeAddress });
+
+    // Step 3: Get UTXO for spending
+    const unspent = await client.listUnspent({
+      query_options: { maximumCount: 1 },
+    });
+
+    if (unspent.length === 0 || unspent[0].amount < amount) {
+      console.warn("Insufficient funds. Pick another UTXO.");
+      return;
+    }
+
+    console.log({ unspent });
+
+    // Step 4: Calculate change
+    const changeAmountStr = Number(unspent[0].amount - amount - FEES).toFixed(
+      6,
+    );
+    const changeAmount = Number(changeAmountStr);
+
+    if (changeAmount < 0) {
+      console.warn("Insufficient funds after fees.");
+      return;
+    }
+
+    console.log({
+      changeAmount,
+      recipientAmount: amount,
+      remainingBalance: unspent[0].amount - changeAmount - amount,
+    });
+
+    // Step 5: Create raw transaction
+    const rawTxHex = await client.createRawTransaction({
+      inputs: [
+        {
+          txid: unspent[0].txid,
+          vout: unspent[0].vout,
+          sequence: sequence,
+        },
+      ],
+      outputs: {
+        [recipientAddress]: amount,
+        [changeAddress]: changeAmount,
       },
-    ],
-    outputs: {
-      [ADDRESS_LL]: recipientAmount,
-      [changeAddress]: changeAmount,
-    },
-  });
-  console.log({ rawTxHex });
+    });
 
-  const signedTxHex = await client.signRawTransactionWithWallet({
-    hexstring: rawTxHex,
-  });
-  console.log({ signedTxHex });
+    console.log("Raw Transaction Hex:", rawTxHex);
 
-  const txId = await client.sendRawTransaction({
-    hexstring: signedTxHex.hex,
-  });
-  console.log({ signedTxHex, txId });
+    // Step 6: Sign the transaction
+    const signedTxHex = await client.signRawTransactionWithWallet({
+      hexstring: rawTxHex,
+    });
 
-  let tx = await client.getTransaction({
-    txid: txId,
-    verbose: true,
-  });
-  console.log(JSON.stringify(tx, null, 2));
-  await mineBlock(newAddress);
-  sendAutomatedRaw();
+    console.log("Signed Transaction Hex:", signedTxHex.hex);
+
+    // Step 7: Broadcast the transaction
+    const txId = await client.sendRawTransaction({
+      hexstring: signedTxHex.hex,
+    });
+
+    console.log(`Transaction Broadcasted! TXID: ${txId}`);
+
+    // Step 8: Fetch transaction details
+    let tx = await client.getTransaction({ txid: txId, verbose: true });
+    console.log("Transaction Details:", JSON.stringify(tx, null, 2));
+
+    // Step 9: Mine a block to confirm the transaction
+    await mineBlock(newAddress);
+  } catch (error) {
+    console.error("Error in sendAutomatedRawSequence:", error.message);
+  }
 };
-
 // Function mapping for CLI
 const actions = {
   // sendRaw: sendAutomatedRaw,
@@ -220,8 +236,9 @@ const actions = {
 
 const main = async () => {
   const command = argv[2]; // Get command from CLI arguments
-  const param1 = argv[3];
-  const param2 = argv[4];
+  const param1 = argv[3]; // Recipient
+  const param2 = argv[4]; // Amount
+  const param3 = argv[5]; // Sequence (optional)
 
   if (command === "sendRaw") {
     if (!param1 || isNaN(parseFloat(param2))) {
@@ -231,12 +248,27 @@ const main = async () => {
       return;
     }
     await sendAutomatedRaw(param1, parseFloat(param2));
+  } else if (command === "sendRawSequence") {
+    if (!param1 || isNaN(parseFloat(param2))) {
+      console.error(
+        "Usage: node script.js sendRawSequence <recipientAddress> <amount> [sequence]",
+      );
+      return;
+    }
+    await sendAutomatedRawSequence(
+      param1,
+      parseFloat(param2),
+      param3 ? parseInt(param3) : undefined,
+    );
   } else if (command in actions) {
     await actions[command]();
   } else {
     console.log("Usage: node script.js <command>");
     console.log("Available commands:");
     console.log("  sendRaw <address> <amount>   - Send a raw transaction");
+    console.log(
+      "  sendRawSequence <address> <amount> [sequence] - Send a raw transaction with a custom sequence",
+    );
     console.log("  doubleSpend         - Attempt a double-spend attack");
     console.log("  dustTransaction     - Create a dust transaction");
     console.log("  replaceByFee        - Test Replace-By-Fee (RBF)");
