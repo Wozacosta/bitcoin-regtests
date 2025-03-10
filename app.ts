@@ -237,6 +237,68 @@ const sendAutomatedRawSequence = async (
     console.error("Error in sendAutomatedRawSequence:", error.message);
   }
 };
+
+// NOTE: should rename, it instead tests the replaceability
+const attemptDoubleSpend = async (recipientAddress) => {
+  if (!recipientAddress) {
+    console.error("Invalid parameter: Provide a valid recipient address.");
+    return;
+  }
+
+  console.log(`Attempting double spend to ${recipientAddress}...`);
+
+  try {
+    // Step 1: Get available UTXOs
+    const utxos = await client.listUnspent();
+    if (utxos.length < 1) {
+      console.warn("Not enough UTXOs to double-spend.");
+      return;
+    }
+
+    const utxo = utxos[0]; // Use the first available UTXO
+    console.log({ utxo });
+
+    const amount = Number(Number(utxo.amount - FEES).toFixed(6));
+
+    // Step 2: Create two transactions using the same UTXO
+    const rawTx1 = await client.createRawTransaction({
+      inputs: [{ txid: utxo.txid, vout: utxo.vout }],
+      outputs: { [recipientAddress]: amount },
+    });
+
+    const rawTx2 = await client.createRawTransaction({
+      inputs: [{ txid: utxo.txid, vout: utxo.vout, sequence: 4294967295 }],
+      outputs: { [recipientAddress]: amount - FEES }, // MORE FEES, SO THAT IT REPLACES THE FIRST
+    });
+
+    // Step 3: Sign both transactions
+    const signedTx1 = await client.signRawTransactionWithWallet({
+      hexstring: rawTx1,
+    });
+    const signedTx2 = await client.signRawTransactionWithWallet({
+      hexstring: rawTx2,
+    });
+    console.log({ signedTx1, signedTx2 });
+
+    // Step 4: Broadcast the first transaction
+    const txId1 = await client.sendRawTransaction({ hexstring: signedTx1.hex });
+    console.log("First transaction sent:", txId1);
+
+    // Step 5: Attempt to broadcast the second transaction (should fail)
+    try {
+      const txId2 = await client.sendRawTransaction({
+        hexstring: signedTx2.hex,
+      });
+      console.log("Second transaction sent (should fail):", txId2);
+    } catch (error) {
+      console.error("Double-spend rejected as expected:", error.message);
+    }
+  } catch (error) {
+    console.error("Error in attemptDoubleSpend:", error.message);
+    console.log({ error });
+  }
+};
+
 // Function mapping for CLI
 const actions = {
   // sendRaw: sendAutomatedRaw,
@@ -285,6 +347,12 @@ const main = async () => {
       return;
     }
     await sendToAddress(param1, parseFloat(param2));
+  } else if (command === "doubleSpend") {
+    if (!param1) {
+      console.error("Usage: node script.js doubleSpend <recipientAddress>");
+      return;
+    }
+    await attemptDoubleSpend(param1);
   } else if (command in actions) {
     await actions[command]();
   } else {
@@ -298,7 +366,9 @@ const main = async () => {
     console.log(
       "  sendRawSequence <address> <amount> [sequence] - Send a raw transaction with a custom sequence",
     );
-    console.log("  doubleSpend         - Attempt a double-spend attack");
+    console.log(
+      "  doubleSpend <address>        - Attempt a double-spend attack",
+    );
     console.log("  dustTransaction     - Create a dust transaction");
     console.log("  replaceByFee        - Test Replace-By-Fee (RBF)");
     console.log("  multisig            - Test a multisig transaction");
