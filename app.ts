@@ -299,6 +299,104 @@ const attemptDoubleSpend = async (recipientAddress) => {
   }
 };
 
+// NOTE: blocked on node side, not worth tweaking with the conf imo
+const createDustTransaction = async (recipientAddress) => {
+  if (!recipientAddress) {
+    console.error("Invalid parameter: Provide a valid recipient address.");
+    return;
+  }
+
+  console.log(`Creating a dust transaction to ${recipientAddress}...`);
+
+  try {
+    // Step 1: Create a dust-sized raw transaction
+    const rawTx = await client.createRawTransaction({
+      inputs: [],
+      outputs: { [recipientAddress]: 0.00000001 }, // Extremely small output (dust)
+    });
+
+    // Step 2: Fund the transaction (Bitcoin Core selects UTXOs)
+    const fundedTx = await client.fundRawTransaction({ hexstring: rawTx });
+
+    console.log("Funded Transaction:", fundedTx);
+
+    // Step 3: Sign the transaction
+    const signedTx = await client.signRawTransactionWithWallet({
+      hexstring: fundedTx.hex,
+    });
+
+    console.log("Signed Transaction Hex:", signedTx.hex);
+
+    // Step 4: Attempt to broadcast the transaction
+    try {
+      const txId = await client.sendRawTransaction({ hexstring: signedTx.hex });
+      console.log("Dust transaction sent! TXID:", txId);
+    } catch (error) {
+      console.error(
+        "Dust transaction failed as expected (likely due to dust limits):",
+        error.message,
+      );
+    }
+  } catch (error) {
+    console.error("Error in createDustTransaction:", error.message);
+  }
+};
+
+const createMultisigTransaction = async (recipientAddress) => {
+  if (!recipientAddress) {
+    console.error("Invalid parameter: Provide a valid recipient address.");
+    return;
+  }
+
+  console.log(`Creating a multisig transaction to ${recipientAddress}...`);
+
+  try {
+    // Step 1: Generate additional addresses for the multisig wallet
+    const key1 = await client.getNewAddress({ address_type: "legacy" });
+    const key2 = await client.getNewAddress({ address_type: "legacy" });
+
+    console.log(`Generated additional multisig keys: ${key1}, ${key2}`);
+
+    // Step 2: Create a 2-of-3 multisig address
+    // https://developer.bitcoin.org/reference/rpc/addmultisigaddress.html#argument-4-address-type
+    const multisig = await client.addMultiSigAddress({
+      nrequired: 2, // Requires 2 out of 3 signatures
+      keys: [recipientAddress, key1, key2], // One provided address, two generated
+    });
+
+    console.log("Created multisig address:", multisig.address);
+
+    // Step 3: Create a raw transaction sending BTC to the multisig address
+    const rawTx = await client.createRawTransaction({
+      inputs: [],
+      outputs: { [multisig.address]: 0.5 }, // Sending 0.5 BTC
+    });
+
+    // Step 4: Fund the transaction (Bitcoin Core selects UTXOs)
+    const fundedTx = await client.fundRawTransaction({ hexstring: rawTx });
+
+    console.log("Funded Transaction:", fundedTx);
+
+    // Step 5: Sign the transaction
+    const signedTx = await client.signRawTransactionWithWallet({
+      hexstring: fundedTx.hex,
+    });
+
+    console.log("Signed Transaction Hex:", signedTx.hex);
+
+    // Step 6: Attempt to broadcast the transaction
+    try {
+      const txId = await client.sendRawTransaction({ hexstring: signedTx.hex });
+      console.log("Multisig transaction sent! TXID:", txId);
+    } catch (error) {
+      console.error("Multisig transaction failed:", error.message);
+    }
+  } catch (error) {
+    console.error("Error in createMultisigTransaction:", error.message);
+    console.error({ error });
+  }
+};
+
 // Function mapping for CLI
 const actions = {
   // sendRaw: sendAutomatedRaw,
@@ -353,6 +451,18 @@ const main = async () => {
       return;
     }
     await attemptDoubleSpend(param1);
+  } else if (command === "dustTransaction") {
+    if (!param1) {
+      console.error("Usage: node script.js dustTransaction <recipientAddress>");
+      return;
+    }
+    await createDustTransaction(param1);
+  } else if (command === "multisig") {
+    if (!param1) {
+      console.error("Usage: node script.js multisig <recipientAddress>");
+      return;
+    }
+    await createMultisigTransaction(param1);
   } else if (command in actions) {
     await actions[command]();
   } else {
@@ -369,9 +479,9 @@ const main = async () => {
     console.log(
       "  doubleSpend <address>        - Attempt a double-spend attack",
     );
-    console.log("  dustTransaction     - Create a dust transaction");
+    console.log("  dustTransaction <address>    - Create a dust transaction");
+    console.log("  multisig <address>           - Test a multisig transaction");
     console.log("  replaceByFee        - Test Replace-By-Fee (RBF)");
-    console.log("  multisig            - Test a multisig transaction");
   }
 };
 
