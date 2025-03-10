@@ -1,0 +1,20 @@
+{
+  "name": "btctest",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "bcrpc": "^0.4.0",
+    "bitcoin-core": "^5.0.0",
+    "mocha": "^11.1.0",
+    "node-jq": "^6.0.1"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3"
+  }
+}
