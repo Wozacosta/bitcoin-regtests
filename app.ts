@@ -1,31 +1,15 @@
-import RpcAgent from "bcrpc";
 import Client from "bitcoin-core";
-// const jq = require('node-jq')
-import * as jq from "node-jq";
 import { argv } from "process";
 import readline from "readline";
-// console.log({ jq });
 
-//console.log("toto");
 // fetched from bitcoin.conf
-const agent = new RpcAgent({
-  host: "localhost",
-  port: 18443,
-  user: "admin1",
-  pass: "123",
-});
-console.log({ agent });
 const client: any = new Client({
   version: "0.24.1",
-  // host: "localhost:18443",
   username: "admin1",
   password: "123",
   host: "http://localhost:18443",
 });
-// console.log({ client });
-//
-//
-const ADDRESS_LL = "mpW6aGSV88B9HUjPDTNnnYMRCLkaSqqvyx";
+
 const FEES = 0.0001;
 
 const waitForUserInput = () => {
@@ -56,6 +40,9 @@ const mineTo = async (recipientAddress) => {
   await mineBlock(recipientAddress);
 };
 
+/*
+ * Note that it sets the input sequence to 4294967293, <=0xFFFFFFFD — Replace By Fee (RBF).
+ */
 const sendToAddress = async (recipientAddress, amount) => {
   if (!recipientAddress || amount <= 0) {
     console.error(
@@ -125,7 +112,9 @@ const sendAutomatedRaw = async (destinationAddress, amount) => {
     // Step 2: Fund the transaction (Bitcoin Core automatically selects UTXOs)
     const fundedTx = await client.fundRawTransaction({
       hexstring: unfinishedTx,
-      options: { replaceable: false }, // Set to true if RBF is needed
+      options: { replaceable: true }, // Set to true if RBF is needed
+      // if replaceable: false, sequence of vin set to 4294967294 (0xFFFFFFFE) // Locktime BUT non-rbf
+      // else, sets to: 4294967293 // Locktime & RBF
     });
 
     console.log("Funded Transaction:", fundedTx);
@@ -165,12 +154,11 @@ const sendAutomatedRaw = async (destinationAddress, amount) => {
 *  Sequence	Effect
 8  0xFFFFFFFE (4294967294)	Default (Non-RBF): Cannot be replaced
 * 0xFFFFFFFD (4294967293)	Opt-in RBF: Can be replaced by a higher fee transaction
+*
+*
+* Called like this as you've got more control over all the inputs
  */
-const sendAutomatedRawSequence = async (
-  recipientAddress,
-  amount,
-  sequence = 4294967294,
-) => {
+const sendRaw = async (recipientAddress, amount, sequence = 4294967294) => {
   if (!recipientAddress || amount <= 0) {
     console.error(
       "Invalid parameters: Provide a valid address and positive amount.",
@@ -183,10 +171,6 @@ const sendAutomatedRawSequence = async (
   );
 
   try {
-    // Step 1: Check balance
-    const balance = await client.getBalance({ minconf: 0 });
-    console.log({ balance, ADDRESS_LL });
-
     // Step 2: Get new addresses
     const newAddress = await client.getNewAddress({ address_type: "legacy" });
     const changeAddress = await client.getRawChangeAddress({
@@ -234,6 +218,7 @@ const sendAutomatedRawSequence = async (
         },
       ],
       outputs: {
+        // [changeAddress]: changeAmount,
         [recipientAddress]: amount,
         [changeAddress]: changeAmount,
       },
@@ -266,7 +251,7 @@ const sendAutomatedRawSequence = async (
     // Step 9: Mine a block to confirm the transaction
     await mineBlock(newAddress);
   } catch (error) {
-    console.error("Error in sendAutomatedRawSequence:", error.message);
+    console.error("Error in sendRaw:", error.message);
     console.error({ error });
   }
 };
@@ -548,7 +533,7 @@ const createMultisigTransaction = async (recipientPubKey) => {
 // Function mapping for CLI
 const actions = {
   // sendRaw: sendAutomatedRaw,
-  sendAutomatedRawSequence,
+  sendRaw,
   // doubleSpend: attemptDoubleSpend,
   // dustTransaction: createDustTransaction,
   // replaceByFee: replaceByFeeTransaction,
@@ -562,6 +547,8 @@ const main = async () => {
   const param3 = argv[5]; // Sequence (optional)
 
   console.log({ argv });
+  const balance = await client.getBalance({ minconf: 0 });
+  console.log({ balance });
 
   if (command === "sendRaw") {
     if (!param1 || isNaN(parseFloat(param2))) {
@@ -578,7 +565,7 @@ const main = async () => {
       );
       return;
     }
-    await sendAutomatedRawSequence(
+    await sendRaw(
       param1,
       parseFloat(param2),
       param3 ? parseInt(param3) : undefined,
