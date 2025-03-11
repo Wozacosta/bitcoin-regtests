@@ -10,9 +10,13 @@
   "license": "ISC",
   "dependencies": {
     "bcrpc": "^0.4.0",
+    "bip32": "^5.0.0-rc.0",
+    "bip32-path": "^0.4.2",
     "bitcoin-core": "^5.0.0",
+    "bitcoinjs-lib": "^6.1.7",
     "mocha": "^11.1.0",
-    "node-jq": "^6.0.1"
+    "node-jq": "^6.0.1",
+    "tiny-secp256k1": "^2.2.3"
   },
   "devDependencies": {
     "tsx": "^4.19.3"

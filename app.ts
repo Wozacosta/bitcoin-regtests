@@ -3,7 +3,8 @@ import Client from "bitcoin-core";
 // const jq = require('node-jq')
 import * as jq from "node-jq";
 import { argv } from "process";
-console.log({ jq });
+import readline from "readline";
+// console.log({ jq });
 
 //console.log("toto");
 // fetched from bitcoin.conf
@@ -26,6 +27,20 @@ const client: any = new Client({
 //
 const ADDRESS_LL = "mpW6aGSV88B9HUjPDTNnnYMRCLkaSqqvyx";
 const FEES = 0.0001;
+
+const waitForUserInput = () => {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
+
+    rl.question("Press Enter to continue", () => {
+      rl.close();
+      resolve();
+    });
+  });
+};
 
 const mineBlock = async (address) => {
   // const newBlock = await client.command("generate");
@@ -139,6 +154,18 @@ const sendAutomatedRaw = async (destinationAddress, amount) => {
   }
 };
 
+/*
+ * https://learnmeabitcoin.com/technical/transaction/input/sequence/
+ * NOTE: You only need to set one of the sequence fields to enable locktime or RBF
+ * (even if you have multiple inputs and sequence fields in one transaction)
+ * However, relative locktime settings are specific to each input.
+ *
+ * If set to 0xFFFFFFFE (4294967294) → No timelock (default).
+*  If set to a number ≤ 0x0000FFFF (65535) → Blocks-based timelock.
+*  Sequence	Effect
+8  0xFFFFFFFE (4294967294)	Default (Non-RBF): Cannot be replaced
+* 0xFFFFFFFD (4294967293)	Opt-in RBF: Can be replaced by a higher fee transaction
+ */
 const sendAutomatedRawSequence = async (
   recipientAddress,
   amount,
@@ -168,21 +195,22 @@ const sendAutomatedRawSequence = async (
     console.log({ newAddress, changeAddress });
 
     // Step 3: Get UTXO for spending
-    const unspent = await client.listUnspent({
-      query_options: { maximumCount: 1 },
+    const unspents = await client.listUnspent({
+      // query_options: { maximumCount: 1 },
     });
+    let id = 0;
+    let unspent = unspents[id];
 
-    if (unspent.length === 0 || unspent[0].amount < amount) {
-      console.warn("Insufficient funds. Pick another UTXO.");
-      return;
+    while (unspent.amount < amount) {
+      console.warn("Insufficient funds. Picking another UTXO.");
+      id++;
+      unspent = unspents[id];
     }
 
     console.log({ unspent });
 
     // Step 4: Calculate change
-    const changeAmountStr = Number(unspent[0].amount - amount - FEES).toFixed(
-      6,
-    );
+    const changeAmountStr = Number(unspent.amount - amount - FEES).toFixed(6);
     const changeAmount = Number(changeAmountStr);
 
     if (changeAmount < 0) {
@@ -193,15 +221,15 @@ const sendAutomatedRawSequence = async (
     console.log({
       changeAmount,
       recipientAmount: amount,
-      remainingBalance: unspent[0].amount - changeAmount - amount,
+      remainingBalance: unspent.amount - changeAmount - amount,
     });
 
     // Step 5: Create raw transaction
     const rawTxHex = await client.createRawTransaction({
       inputs: [
         {
-          txid: unspent[0].txid,
-          vout: unspent[0].vout,
+          txid: unspent.txid,
+          vout: unspent.vout,
           sequence: sequence,
         },
       ],
@@ -212,6 +240,10 @@ const sendAutomatedRawSequence = async (
     });
 
     console.log("Raw Transaction Hex:", rawTxHex);
+    const decodedTx = await client.decodeRawTransaction({
+      hexstring: rawTxHex,
+    });
+    console.log("Decoded Transaction:", JSON.stringify(decodedTx, null, 2));
 
     // Step 6: Sign the transaction
     const signedTxHex = await client.signRawTransactionWithWallet({
@@ -235,6 +267,101 @@ const sendAutomatedRawSequence = async (
     await mineBlock(newAddress);
   } catch (error) {
     console.error("Error in sendAutomatedRawSequence:", error.message);
+    console.error({ error });
+  }
+};
+
+const sendReplaceableTransaction = async (recipientAddress, amount) => {
+  if (!recipientAddress || amount <= 0) {
+    console.error(
+      "Invalid parameters: Provide a valid address and positive amount.",
+    );
+    return;
+  }
+
+  console.log(
+    `Sending replaceable transaction to ${recipientAddress} with amount ${amount} BTC...`,
+  );
+
+  try {
+    // Step 1: Get an unspent UTXO
+    const unspent = await client.listUnspent({
+      query_options: { minimumSumAmount: amount },
+    });
+
+    if (!unspent.length) {
+      console.error("No suitable UTXOs available.");
+      return;
+    }
+
+    const utxo = unspent[0];
+
+    // Step 2: Create the first replaceable transaction (RBF enabled)
+    const rawTx1 = await client.createRawTransaction({
+      inputs: [
+        {
+          txid: utxo.txid,
+          vout: utxo.vout,
+          sequence: 4294967293, // RBF enabled
+        },
+      ],
+      outputs: {
+        [recipientAddress]: amount,
+      },
+    });
+
+    // Step 3: Fund & Sign the first transaction
+    const fundedTx1 = await client.fundRawTransaction({ hexstring: rawTx1 });
+    const signedTx1 = await client.signRawTransactionWithWallet({
+      hexstring: fundedTx1.hex,
+    });
+
+    // Step 4: Broadcast the first transaction
+    const txId1 = await client.sendRawTransaction({ hexstring: signedTx1.hex });
+    console.log(
+      `First transaction sent (TXID: ${txId1}), waiting before replacing...`,
+    );
+
+    // Wait a few seconds to simulate a delay before replacement
+    /*
+    console.log("Mining a block...");
+    const newAddress = await client.getNewAddress();
+    const newBlock = await mineBlock(newAddress);
+    console.log(`Block mined: ${newBlock}`);
+    */
+
+    await waitForUserInput();
+    // Step 5: Create the second transaction (higher fee to replace)
+    const rawTx2 = await client.createRawTransaction({
+      inputs: [
+        {
+          txid: utxo.txid,
+          vout: utxo.vout,
+          sequence: 4294967293, // RBF enabled
+        },
+      ],
+      outputs: {
+        [recipientAddress]: amount, // Same amount
+      },
+    });
+
+    // Step 6: Increase the fee for the replacement transaction
+    const fundedTx2 = await client.fundRawTransaction({
+      hexstring: rawTx2,
+      options: { feeRate: 0.0002 }, // Increase fee rate
+    });
+
+    const signedTx2 = await client.signRawTransactionWithWallet({
+      hexstring: fundedTx2.hex,
+    });
+
+    // Step 7: Broadcast the second transaction, replacing the first
+    const txId2 = await client.sendRawTransaction({ hexstring: signedTx2.hex });
+    console.log(
+      `Replacement transaction sent (TXID: ${txId2}), should replace the first.`,
+    );
+  } catch (error) {
+    console.error("Error in sendReplaceableTransaction:", error.message);
   }
 };
 
@@ -434,6 +561,8 @@ const main = async () => {
   const param2 = argv[4]; // Amount
   const param3 = argv[5]; // Sequence (optional)
 
+  console.log({ argv });
+
   if (command === "sendRaw") {
     if (!param1 || isNaN(parseFloat(param2))) {
       console.error(
@@ -466,6 +595,14 @@ const main = async () => {
       return;
     }
     await sendToAddress(param1, parseFloat(param2));
+  } else if (command === "replaceTx") {
+    if (!param1 || isNaN(parseFloat(param2))) {
+      console.error(
+        "Usage: node script.js replaceTx <recipientAddress> <amount>",
+      );
+      return;
+    }
+    await sendReplaceableTransaction(param1, parseFloat(param2));
   } else if (command === "doubleSpend") {
     if (!param1) {
       console.error("Usage: node script.js doubleSpend <recipientAddress>");
@@ -492,6 +629,9 @@ const main = async () => {
     console.log("  mineTo <address>        - Mine a block to the address");
     console.log(
       "  sendTo <address> <amount>     - Send a transaction to an address",
+    );
+    console.log(
+      "  replaceTx <address> <amount>  - Send a transaction and replace it using RBF",
     );
     console.log("  sendRaw <address> <amount>   - Send a raw transaction");
     console.log(
