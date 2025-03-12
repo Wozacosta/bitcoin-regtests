@@ -666,17 +666,13 @@ const main = async () => {
 
   if (command === "sendAutomatedRaw") {
     if (!param1 || isNaN(parseFloat(param2))) {
-      console.error(
-        "Usage: node script.js sendAutomatedRaw <destinationAddress> <amount>",
-      );
+      console.error("Missing 1st param, or 2nd param not a number");
       return;
     }
     await sendAutomatedRaw(param1, parseFloat(param2));
   } else if (command === "sendRaw") {
     if (!param1 || isNaN(parseFloat(param2))) {
-      console.error(
-        "Usage: node script.js sendRaw <recipientAddress> <amount> [sequence]",
-      );
+      console.error("Missing 1st param, or 2nd param not a number");
       return;
     }
     await sendRaw(
@@ -687,7 +683,7 @@ const main = async () => {
   } else if (command === "sendRawTwoOutputs") {
     if (!param1 || !param2 || isNaN(parseFloat(param3))) {
       console.error(
-        "Usage: node script.js sendRawTwoOutputs <address1> <address2> <amount> [sequence]",
+        "Missing 1st param, or 2nd param, or 3rd param not a number",
       );
       return;
     }
