@@ -640,16 +640,18 @@ const createMultisigTransaction = async (recipientPubKey) => {
     console.log({ error });
   }
 };
-//
-// Function mapping for CLI
-const actions = {
-  // sendRaw: sendAutomatedRaw,
-  sendRaw,
-  // doubleSpend: attemptDoubleSpend,
-  // dustTransaction: createDustTransaction,
-  // replaceByFee: replaceByFeeTransaction,
-  // multisig: createMultisigTransaction,
-};
+const usageStr = `Usage: node script.js <command>
+
+Available commands:
+  mineTo <address>                           - Mine a block to the address
+  sendTo <address> <amount>                   - Send a transaction to an address
+  replaceTx <address> <amount>                - Send a transaction and replace it using RBF
+  sendAutomatedRaw <address> <amount>         - Send a raw transaction, automatically funded
+  sendRaw <address> <amount> [sequence]       - Send a raw transaction with a custom sequence
+  sendRawTwoOutputs <address1> <address2> <amount> [sequence] - Send a raw transaction with a custom sequence to 2 addresses
+  doubleSpend <address>                       - Attempt a double-spend attack
+  dustTransaction <address>                   - Create a dust transaction
+  multisig <address>                          - Test a multisig transaction`;
 
 const main = async () => {
   const command = argv[2]; // Get command from CLI arguments
@@ -697,69 +699,42 @@ const main = async () => {
     );
   } else if (command === "mineTo") {
     if (!param1) {
-      console.error("Usage: node script.js mineTo <recipientAddress>");
+      console.error("Missing 1st param");
       return;
     }
     await mineTo(param1);
   } else if (command === "sendTo") {
     if (!param1 || isNaN(parseFloat(param2))) {
-      console.error("Usage: node script.js sendTo <recipientAddress> <amount>");
+      console.error("Missing 1st param, or 2nd param not a number");
       return;
     }
     await sendToAddress(param1, parseFloat(param2));
   } else if (command === "replaceTx") {
     if (!param1 || isNaN(parseFloat(param2))) {
-      console.error(
-        "Usage: node script.js replaceTx <recipientAddress> <amount>",
-      );
+      console.error("Missing 1st param, or 2nd param not a number");
       return;
     }
     await sendReplaceableTransaction(param1, parseFloat(param2));
   } else if (command === "doubleSpend") {
     if (!param1) {
-      console.error("Usage: node script.js doubleSpend <recipientAddress>");
+      console.error("Missing 1st param");
       return;
     }
     await attemptDoubleSpend(param1);
   } else if (command === "dustTransaction") {
     if (!param1) {
-      console.error("Usage: node script.js dustTransaction <recipientAddress>");
+      console.error("Missing 1st param");
       return;
     }
     await createDustTransaction(param1);
   } else if (command === "multisig") {
     if (!param1) {
-      console.error("Usage: node script.js multisig <recipientAddress>");
+      console.error("Missing 1st param");
       return;
     }
     await createMultisigTransaction(param1);
-  } else if (command in actions) {
-    await actions[command]();
   } else {
-    console.log("Usage: node script.js <command>");
-    console.log("Available commands:");
-    console.log("  mineTo <address>        - Mine a block to the address");
-    console.log(
-      "  sendTo <address> <amount>     - Send a transaction to an address",
-    );
-    console.log(
-      "  replaceTx <address> <amount>  - Send a transaction and replace it using RBF",
-    );
-    console.log(
-      "  sendAutomatedRaw <address> <amount>   - Send a raw transaction, automatically funded",
-    );
-    console.log(
-      "  sendRaw <address> <amount> [sequence] - Send a raw transaction with a custom sequence",
-    );
-    console.log(
-      "  sendRawTwoOuputs <address1> <address2> <amount> [sequence] - Send a raw transaction with a custom sequence to 2 addresses",
-    );
-    console.log(
-      "  doubleSpend <address>        - Attempt a double-spend attack",
-    );
-    console.log("  dustTransaction <address>    - Create a dust transaction");
-    console.log("  multisig <address>           - Test a multisig transaction");
-    console.log("  replaceByFee        - Test Replace-By-Fee (RBF)");
+    console.log(usageStr);
   }
 };
 
