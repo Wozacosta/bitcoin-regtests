@@ -376,6 +376,11 @@ const sendReplaceableTransaction = async (recipientAddress, amount) => {
   );
 
   try {
+    // Used for LL account to send funds to
+    const btcNodeAddress = await client.getNewAddress({
+      address_type: "legacy",
+    });
+
     // Step 1: Get an unspent UTXO
     const unspent = await client.listUnspent({
       query_options: { minimumSumAmount: amount },
@@ -416,14 +421,9 @@ const sendReplaceableTransaction = async (recipientAddress, amount) => {
     console.log(
       `First transaction sent (TXID: ${txId1}), waiting before replacing...`,
     );
-
-    // Wait a few seconds to simulate a delay before replacement
-    /*
-    console.log("Mining a block...");
-    const newAddress = await client.getNewAddress();
-    const newBlock = await mineBlock(newAddress);
-    console.log(`Block mined: ${newBlock}`);
-    */
+    console.log(
+      `If you need to, make a tx that sends funds to ${btcNodeAddress}`,
+    );
 
     await waitForUserInput();
     // Step 5: Create the second transaction (higher fee to replace)
