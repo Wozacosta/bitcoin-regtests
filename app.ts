@@ -326,11 +326,8 @@ const sendRaw = async (recipientAddress, amount, sequence = 4294967294) => {
         },
       ],
       outputs: {
-        // [changeAddress]: changeAmount,
         [recipientAddress]: amount,
-        ["msYsrRehxqXdzUwjnGXgzbQRRHyVL9QXD1"]: 0.1,
-        // [recipientAddress]: 0.1,
-        [changeAddress]: changeAmount - 0.1,
+        [changeAddress]: changeAmount,
       },
     });
 
