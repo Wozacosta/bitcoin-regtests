@@ -43,7 +43,7 @@ const mineTo = async (recipientAddress) => {
 /*
  * Note that it sets the input sequence to 4294967293, <=0xFFFFFFFD — Replace By Fee (RBF).
  */
-const sendToAddress = async (recipientAddress, amount) => {
+const sendTo = async (recipientAddress, amount) => {
   if (!recipientAddress || amount <= 0) {
     console.error(
       "Invalid parameters: Provide a valid recipient address and positive amount.",
@@ -85,6 +85,12 @@ const sendToAddress = async (recipientAddress, amount) => {
     );
   } catch (error) {
     console.error("Error in sendToAddress:", error.message);
+  }
+};
+const sendToMany = async (recipientAddress, amount, times) => {
+  // calls sendTo times times
+  for (let i = 0; i < times; i++) {
+    await sendTo(recipientAddress, amount);
   }
 };
 
@@ -643,8 +649,9 @@ const createMultisigTransaction = async (recipientPubKey) => {
 const usageStr = `Usage: node script.js <command>
 
 Available commands:
-  mineTo <address>                           - Mine a block to the address
+  mineTo <address>                            - Mine a block to the address
   sendTo <address> <amount>                   - Send a transaction to an address
+  sendToMany <address> <amount> <times>       - Send a transaction to an address
   replaceTx <address> <amount>                - Send a transaction and replace it using RBF
   sendAutomatedRaw <address> <amount>         - Send a raw transaction, automatically funded
   sendRaw <address> <amount> [sequence]       - Send a raw transaction with a custom sequence
@@ -704,7 +711,13 @@ const main = async () => {
       console.error("Missing 1st param, or 2nd param not a number");
       return;
     }
-    await sendToAddress(param1, parseFloat(param2));
+    await sendTo(param1, parseFloat(param2));
+  } else if (command === "sendToMany") {
+    if (!param1 || isNaN(parseFloat(param2)) || isNaN(parseInt(param3))) {
+      console.error("Missing 1st param, or 2nd/3rd param not a number");
+      return;
+    }
+    await sendToMany(param1, parseFloat(param2), parseInt(param3));
   } else if (command === "replaceTx") {
     if (!param1 || isNaN(parseFloat(param2))) {
       console.error("Missing 1st param, or 2nd param not a number");
