@@ -193,7 +193,7 @@ const sendRawTwoOutputs = async (
     console.log({ unspent });
 
     // Step 4: Calculate change
-    const changeAmountStr = Number(unspent.amount - amount - FEES).toFixed(6);
+    const changeAmountStr = Number(unspent.amount - amount - FEES).toFixed(5);
     const changeAmount = Number(changeAmountStr);
 
     if (changeAmount < 0) {
@@ -217,10 +217,8 @@ const sendRawTwoOutputs = async (
         },
       ],
       outputs: {
-        // [changeAddress]: changeAmount,
         [address1]: amount - 0.1,
         [address2]: 0.1,
-        // [recipientAddress]: 0.1,
         [changeAddress]: changeAmount,
       },
     });
@@ -656,9 +654,9 @@ Available commands:
   sendAutomatedRaw <address> <amount>         - Send a raw transaction, automatically funded
   sendRaw <address> <amount> [sequence]       - Send a raw transaction with a custom sequence
   sendRawTwoOutputs <address1> <address2> <amount> [sequence] - Send a raw transaction with a custom sequence to 2 addresses
-  doubleSpend <address>                       - Attempt a double-spend attack
-  dustTransaction <address>                   - Create a dust transaction
-  multisig <address>                          - Test a multisig transaction`;
+  # doubleSpend <address>                       - Attempt a double-spend attack
+  # dustTransaction <address>                   - Create a dust transaction
+  # multisig <address>                          - Test a multisig transaction`;
 
 const main = async () => {
   const command = argv[2]; // Get command from CLI arguments
