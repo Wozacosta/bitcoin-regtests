@@ -688,16 +688,23 @@ const createMultisigTransaction = async (recipientPubKey) => {
 const usageStr = `Usage: node script.js <command>
 
 Available commands:
-  mineTo <address>                            - Mine a block to the address
+  mineTo <address>                            - Mine a block to the specified address
+  mineMany <address>                          - Mine 100 blocks to the specified address
+  mineToWalletAddress <nbBlocks>              - Mine specified number of blocks to a new wallet address
   sendTo <address> <amount>                   - Send a transaction to an address
-  sendToMany <address> <amount> <times>       - Send a transaction to an address
+  sendToMany <address> <amount> <times>       - Send multiple transactions to an address
   replaceTx <address> <amount>                - Send a transaction and replace it using RBF
   sendAutomatedRaw <address> <amount>         - Send a raw transaction, automatically funded
-  sendRaw <address> <amount> [sequence]       - Send a raw transaction with a custom sequence
-  sendRawTwoOutputs <address1> <address2> <amount> [sequence] - Send a raw transaction with a custom sequence to 2 addresses
-  # doubleSpend <address>                       - Attempt a double-spend attack
-  # dustTransaction <address>                   - Create a dust transaction
-  # multisig <address>                          - Test a multisig transaction`;
+  sendRaw <address> <amount> [sequence]       - Send a raw transaction with a custom sequence (default: 4294967294)
+  sendRawTwoOutputs <address1> <address2> <amount> [sequence] - Send a raw transaction to 2 addresses with custom sequence
+  doubleSpend <address>                       - Attempt to test transaction replaceability (double-spend)
+  dustTransaction <address>                   - Create a dust transaction (likely to be rejected)
+  multisig <pubkey>                           - Create a 2-of-3 multisig transaction
+
+Sequence values:
+  4294967294 (0xFFFFFFFE) - Default, Locktime enabled, Non-RBF
+  4294967293 (0xFFFFFFFD) - Opt-in RBF, can be replaced by higher fee transaction
+  4294967295 (0xFFFFFFFF) - No locktime, no RBF`;
 
 const main = async () => {
   const command = argv[2]; // Get command from CLI arguments
