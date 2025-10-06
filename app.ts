@@ -5,11 +5,43 @@ import readline from "readline";
 // fetched from bitcoin.conf
 const client: any = new Client({
   version: "0.24.1",
-  username: "admin1",
-  password: "123",
+  // username: "admin1",
+  // password: "123",
+  // host: "http://localhost:18443",
+  username: "user",
+  password: "pass",
   host: "http://localhost:18443",
 });
 
+async function loadWallet(name) {
+  try {
+    const res = await client.command("createwallet", name);
+    console.log("Created and loaded wallet:", res);
+  } catch (e) {
+    if (e.message.includes("already exists")) {
+      console.log("Wallet already exists. Attempting to load.");
+      try {
+        await client.command("loadwallet", name);
+        console.log("Wallet loaded successfully.");
+      } catch (loadErr) {
+        if (loadErr.message.includes("already loaded")) {
+          console.log("Wallet already loaded.");
+        } else {
+          console.error("Failed to load wallet:", loadErr);
+        }
+      }
+    } else {
+      console.error("Failed to create wallet:", e);
+    }
+  }
+}
+
+async function mineToWalletAddress(param) {
+  const address = await client.getNewAddress();
+  const nbBlocks = parseInt(param);
+  await client.command("generatetoaddress", nbBlocks, address);
+  console.log(`Mined ${nbBlocks} blocks to: ${address}`);
+}
 const FEES = 0.0001;
 
 const waitForUserInput = () => {
@@ -24,6 +56,15 @@ const waitForUserInput = () => {
       resolve();
     });
   });
+};
+
+const mineMany = async (address) => {
+  // const newBlock = await client.command("generate");
+  const newBlock = await client.generateToAddress({
+    nblocks: 100,
+    address,
+  });
+  console.log({ newBlock });
 };
 
 const mineBlock = async (address) => {
@@ -666,6 +707,8 @@ const main = async () => {
   const param4 = argv[6];
 
   console.log({ argv });
+  await loadWallet("samy");
+  console.log("here");
   const balance = await client.getBalance({ minconf: 0 });
   console.log({ balance });
 
@@ -704,6 +747,19 @@ const main = async () => {
       return;
     }
     await mineTo(param1);
+  } else if (command === "mineMany") {
+    if (!param1) {
+      console.error("Missing 1st param");
+      return;
+    }
+    await mineMany(param1);
+  } else if (command === "mineToWalletAddress") {
+    if (!param1) {
+      console.error("Missing 1st param");
+      return;
+    }
+
+    await mineToWalletAddress(param1);
   } else if (command === "sendTo") {
     if (!param1 || isNaN(parseFloat(param2))) {
       console.error("Missing 1st param, or 2nd param not a number");
@@ -711,6 +767,7 @@ const main = async () => {
     }
     await sendTo(param1, parseFloat(param2));
   } else if (command === "sendToMany") {
+    console.log("sendtomany!!");
     if (!param1 || isNaN(parseFloat(param2)) || isNaN(parseInt(param3))) {
       console.error("Missing 1st param, or 2nd/3rd param not a number");
       return;
